@@ -1,4 +1,4 @@
-(ns adzerk.boot-test.test
+(ns mischov.boot-test.test
   (:use clojure.test))
 
 (deftest have-you-tried
