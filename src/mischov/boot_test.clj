@@ -49,22 +49,41 @@
        (if regex
          (filter #(re-find regex (str %)) namespaces)
          namespaces))
+
+     ;; Custom core.test impls
+     (defn test-ns
+       [pred ns]
+       (binding [t/*report-counters* (ref t/*initial-report-counters*)]
+         (let [ns-obj (the-ns ns)]
+           (t/do-report {:type :begin-test-ns :ns ns-obj})
+           (t/test-vars (filter pred (vals (ns-interns ns-obj))))
+           (t/do-report {:type :end-test-ns :ns ns-obj}))
+         @t/*report-counters*))
+
+     (defn run-tests
+       ([pred] (run-tests pred *ns*))
+       ([pred & namespaces]
+        (let [summary (assoc (apply merge-with + (map #(test-ns pred %)
+                                                      namespaces))
+                             :type :summary)]
+          (t/do-report summary)
+          summary)))
      
      ;; Run tests.
      (defn test-with-formatting
-       [namespaces formatter]
+       [pred formatter namespaces]
        (case formatter
          :junit (tj/with-junit-output
-                  (apply t/run-tests namespaces))
-         (apply t/run-tests namespaces)))
+                  (apply run-tests pred namespaces))
+         (apply run-tests pred namespaces)))
      
-     (defn run-tests
-       [namespaces output-path formatter]
+     (defn boot-run-tests
+       [pred output-path formatter namespaces]
        (if output-path
          (with-open [writer (io/writer output-path)]
            (binding [t/*test-out* writer]
-             (test-with-formatting namespaces formatter)))
-         (test-with-formatting namespaces formatter))))))
+             (test-with-formatting pred formatter namespaces)))
+         (test-with-formatting pred formatter namespaces))))))
 
 
 ;;; This prevents a name collision WARNING between the test task and
@@ -77,7 +96,8 @@
 (core/deftask test
   "Run clojure.test tests in a pod."
   [n namespaces NAMESPACE #{sym} "The set of namespace symbols to run tests in."
-   r regex REGEX regex "A regex for filtering namespaces."
+   l limit-regex REGEX regex "A regex for limiting namespaces to be tested."
+   t test-filters EXPR #{edn} "The set of expressions to use to filter tests."
    o output-path PATH str "A string representing the filepath to output test results to. Defaults to *out*."
    f formatter FORMATTER kw "Tag defining formatter to use with test results. Currently accepts `junit`. Defaults to standard clojure.test output."]
 
@@ -91,11 +111,15 @@
                                  (-> (get-all-ns ~@(->> fileset
                                                         core/input-dirs
                                                         (map (memfn getPath))))
-                                     (filter-namespaces ~regex))))]
+                                     (filter-namespaces ~limit-regex))))]
         (if (seq namespaces)
-          (let [summary (pod/with-eval-in worker-pod
+          (let [test-predicate `(~'fn [~'%] (and ~@test-filters))
+                summary (pod/with-eval-in worker-pod
                           (doseq [ns '~namespaces] (require ns))
-                          (run-tests '~namespaces ~output-path ~formatter))]
+                          (boot-run-tests ~test-predicate
+                                          ~output-path
+                                          ~formatter
+                                          '~namespaces))]
             (println "Test complete.")
             (println "Test summary: " (dissoc summary :type))
             (when (> (apply + (map summary [:fail :error])) 0)
