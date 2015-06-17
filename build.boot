@@ -16,7 +16,7 @@
        :version     +version+
        :description "Run some tests in boot!"
        :url         "https://github.com/mischov/boot-test"
-       :scm         {:url "https://github.com/adzerk/boot-test"}
+       :scm         {:url "https://github.com/mischov/boot-test"}
        :license     {"Eclipse Public License"
                      "http://www.eclipse.org/legal/epl-v10.html"}}
  test {:namespaces '#{mischov.boot-test.test}})
