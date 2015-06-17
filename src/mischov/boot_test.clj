@@ -1,4 +1,4 @@
-(ns adzerk.boot-test
+(ns mischov.boot-test
   {:boot/export-tasks true}
   (:refer-clojure :exclude [test])
   (:require [boot.pod  :as pod]
