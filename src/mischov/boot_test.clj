@@ -121,8 +121,9 @@
                                           ~formatter
                                           '~namespaces))]
             (println "Test complete.")
-            (println "Test summary: " (dissoc summary :type))
-            (when (> (apply + (map summary [:fail :error])) 0)
-              (System/exit 1)))
+            (if (> (apply + (map summary [:fail :error])) 0)
+              (throw (ex-info "Failed or errored tests"
+                              (dissoc summary :type)))
+              (println "Test summary: " (dissoc summary :type))))
           (println "No namespaces were tested."))
         fileset))))
