@@ -5,7 +5,7 @@
             [boot.core :as core]))
 
 (def pod-deps
-  '[[org.clojure/tools.namespace "0.2.10" :exclusions [org.clojure/clojure]]
+  '[[org.clojure/tools.namespace "0.2.11" :exclusions [org.clojure/clojure]]
     [pjstadig/humane-test-output "0.6.0"  :exclusions [org.clojure/clojure]]])
 
 (defn init [fresh-pod]
@@ -15,33 +15,12 @@
               '[clojure.test.junit :as tj]
               '[clojure.java.io :as io]
               '[pjstadig.humane-test-output :refer [activate!]]
-              '[clojure.tools.namespace.parse :as namespace-parse]
               '[clojure.tools.namespace.find :as namespace-find])
      (activate!)
      
-     ;; Fix for finding cljc namespaces.
-     (defn read-ns-decl [rdr]
-       (try
-         (loop []
-           (let [form (doto (read {:read-cond :allow} rdr) str)]
-             (if (namespace-parse/ns-decl? form)
-               form
-               (recur))))
-         (catch Exception e nil)))
-     
-     (defn read-file-ns-decl [file]
-       (with-open [rdr (java.io.PushbackReader. (io/reader file))]
-         (read-ns-decl rdr)))
-     
-     (defn find-ns-decls-in-dir [^java.io.File dir]
-       (keep read-file-ns-decl (namespace-find/find-clojure-sources-in-dir dir)))
-     
-     (defn find-namespaces-in-dir [^java.io.File dir]
-       (map second (find-ns-decls-in-dir dir)))
-     
      ;; Get all namespaces.
      (defn get-all-ns [& dirs]
-       (-> (mapcat #(find-namespaces-in-dir (io/file %)) dirs)))
+       (-> (mapcat #(namespace-find/find-namespaces-in-dir (io/file %)) dirs)))
      
      ;; Narrow down namespaces.
      (defn filter-namespaces
@@ -50,7 +29,7 @@
          (filter #(re-find regex (str %)) namespaces)
          namespaces))
 
-     ;; Custom core.test impls
+     ;; Custom core.test impls that support test filtering.
      (defn test-ns
        [pred ns]
        (binding [t/*report-counters* (ref t/*initial-report-counters*)]
