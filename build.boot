@@ -7,7 +7,7 @@
 (require '[adzerk.bootlaces :refer :all]
          '[mischov.boot-test :refer [test]])
 
-(def +version+ "1.0.7")
+(def +version+ "1.0.8")
 
 (bootlaces! +version+)
 

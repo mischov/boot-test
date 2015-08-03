@@ -64,6 +64,22 @@
              (test-with-formatting pred formatter namespaces)))
          (test-with-formatting pred formatter namespaces))))))
 
+(defn destroy
+  [pod]
+  (when pod
+    (pod/with-eval-in pod
+      ; println to see return value
+      (println
+       "Shutting down core.async: "
+       (when-let [executor-var
+                  (try (ns-resolve 'clojure.core.async.impl.exec.threadpool
+                                   'the-executor)
+                       (catch java.lang.Exception e nil))]
+         ; arraylist into vector
+         (into [] (.shutdownNow ^java.util.concurrent.ThreadPoolExecutor
+                                @executor-var)))))
+    (.invoke pod "clojure.core/shutdown-agents")
+    (.. pod getClassLoader close)))
 
 ;;; This prevents a name collision WARNING between the test task and
 ;;; clojure.core/test, a function that nobody really uses or cares
@@ -80,7 +96,7 @@
    o output-path PATH str "A string representing the filepath to output test results to. Defaults to *out*."
    f formatter FORMATTER kw "Tag defining formatter to use with test results. Currently accepts `junit`. Defaults to standard clojure.test output."]
 
-  (let [worker-pods (pod/pod-pool (update-in (core/get-env) [:dependencies] into pod-deps) :init init)]
+  (let [worker-pods (pod/pod-pool (update-in (core/get-env) [:dependencies] into pod-deps) :init init :destroy destroy)]
     (core/cleanup (worker-pods :shutdown))
     (core/with-pre-wrap fileset
       (println "Starting test...")
