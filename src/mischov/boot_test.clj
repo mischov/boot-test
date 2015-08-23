@@ -61,9 +61,11 @@
         (test-with-formatting pred formatter namespaces)))
     (test-with-formatting pred formatter namespaces)))
 
+; Avoid ns conflicts
 (if ((loaded-libs) 'boot.user)
   (ns-unmap 'boot.user 'test))
 
+; Boot task
 (core/deftask test
   "Run clojure.test tests in a pod."
   [n namespaces NAMESPACE #{sym} "The set of namespace symbols to run tests in."
@@ -74,17 +76,21 @@
 
   (core/with-pre-wrap fileset
     (let [input-dirs (core/input-dirs fileset)]
+      ; If not first run, refresh
       (when repeated?
         (apply namespace-repl/set-refresh-dirs input-dirs)
         (with-bindings {#'*ns* *ns*}
           (namespace-repl/refresh)))
+      
       (println "Starting test...")
+
+      ; Run tests
       (let [all-ns (get-all-ns input-dirs)
-            namespaces (or (seq namespaces)
-                           (filter-namespaces all-ns limit-regex))]
-        (if (seq namespaces)
+            namespaces' (or (seq namespaces)
+                            (filter-namespaces all-ns limit-regex))]
+        (if (seq namespaces')
           (let [test-predicate (eval `(~'fn [~'%] (and ~@test-filters)))
-                _ (doseq [ns namespaces] (require ns))
+                _ (doseq [ns namespaces'] (require ns))
                 summary (boot-run-tests test-predicate
                                         output-path
                                         formatter
@@ -95,6 +101,8 @@
                               (dissoc summary :type)))
               (println "Test summary: " (dissoc summary :type))))
           (println "No namespaces were tested."))
+
+        ; If first run, start requiring all-ns in background
         (when-not repeated?
           (alter-var-root #'repeated?
                           (fn [_]
