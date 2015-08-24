@@ -12,7 +12,27 @@
 
 (activate!)
 
+;; Do not refresh when first ran.
 (defonce repeated? false)
+
+(defn refresh
+  [input-dirs]
+  (if repeated?
+    (do
+      (apply namespace-repl/set-refresh-dirs input-dirs)
+      (with-bindings {#'*ns* *ns*}
+        (namespace-repl/refresh)))
+    :ok))
+
+(defn set-repeated-true!
+  []
+  (when-not repeated?
+    (alter-var-root #'repeated? (constantly true))))
+
+;; Require all watched namespaces to cut down on refresh time. 
+(defn require-namespaces!
+  [all-ns]
+  (future (doseq [ns all-ns] (require ns))))
 
 ;; Get all namespaces.
 (defn get-all-ns [dirs]
@@ -23,8 +43,8 @@
 (defn filter-namespaces
   [namespaces regex]
   (if regex
-    (filter #(re-find regex (str %)) namespaces)
-    namespaces))
+    (seq (filter #(re-find regex (str %)) namespaces))
+    (seq namespaces)))
 
 ;; Custom core.test impls that support test filtering.
 (defn test-ns
@@ -75,39 +95,28 @@
    f formatter FORMATTER kw "Tag defining formatter to use with test results. Currently accepts `junit`. Defaults to standard clojure.test output."]
 
   (core/with-pre-wrap fileset
-    (let [input-dirs (core/input-dirs fileset)]
-      ; If not first run, refresh
-      (when repeated?
-        (apply namespace-repl/set-refresh-dirs input-dirs)
-        (with-bindings {#'*ns* *ns*}
-          (namespace-repl/refresh)))
-      
-      (println "Starting test...")
-
-      ; Run tests
-      (let [all-ns (get-all-ns input-dirs)
-            namespaces' (or (seq namespaces)
-                            (filter-namespaces all-ns limit-regex))]
-        (if (seq namespaces')
-          (let [test-predicate (eval `(~'fn [~'%] (and ~@test-filters)))
-                _ (doseq [ns namespaces'] (require ns))
-                summary (boot-run-tests test-predicate
-                                        output-path
-                                        formatter
-                                        namespaces)]
-            (println "Test complete.")
-            (if (> (apply + (map summary [:fail :error])) 0)
-              (throw (ex-info "Failed or errored tests"
-                              (dissoc summary :type)))
-              (println "Test summary: " (dissoc summary :type))))
-          (println "No namespaces were tested."))
-
-        ; If first run, start requiring all-ns in background
-        (when-not repeated?
-          (alter-var-root #'repeated?
-                          (fn [_]
-                            (future
-                              (doseq [ns all-ns]
-                                (require ns)))
-                            true)))
-        fileset))))
+    (let [input-dirs (core/input-dirs fileset)
+          all-ns (get-all-ns input-dirs)
+          refresh-result (refresh input-dirs)]
+      (set-repeated-true!)
+      (if-not (= :ok refresh-result)
+        (throw refresh-result)
+        ; Run tests
+        (do
+          (println "Starting test...")
+          (if-let [namespaces' (or (seq namespaces)
+                                   (filter-namespaces all-ns limit-regex))]
+            (let [test-predicate (eval `(~'fn [~'%] (and ~@test-filters)))
+                  _ (doseq [ns namespaces'] (require ns))
+                  summary (boot-run-tests test-predicate
+                                          output-path
+                                          formatter
+                                          namespaces')]
+              (println "Test complete.")
+              (if (> (apply + (map summary [:fail :error])) 0)
+                (throw (ex-info "Failed or errored tests"
+                                (dissoc summary :type)))
+                (println "Test summary: " (dissoc summary :type))))
+            (println "No namespaces were tested."))
+          (require-namespaces! all-ns)
+          fileset)))))
